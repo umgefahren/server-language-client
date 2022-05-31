@@ -79,7 +79,7 @@ async fn test_resp_handler(resp_hand_receiver: Receiver<ResponseHandlerBundler>,
         let row: Vec<String> = durations.iter()
             .map(|e| {
                 match e {
-                    Ok(dur) => format!("Ok: {}ms", dur.as_millis()),
+                    Ok(dur) => format!("Ok: {:?}", dur),
                     Err(e) => format!("Err: {:?}", e),
                 }
             })

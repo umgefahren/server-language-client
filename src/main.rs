@@ -16,6 +16,7 @@ pub(crate) mod generator;
 pub(crate) mod supplier;
 pub(crate) mod test;
 pub(crate) mod worker;
+pub(crate) mod results;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

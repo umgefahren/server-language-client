@@ -25,7 +25,7 @@ async fn execute_bundle<A: ToSocketAddrs>(address: &A, bundle: PatternBundle, st
     let pattern = bundle.pattern;
     let sender = bundle.response_chan;
 
-    let connection = TcpStream::connect(address).await?;
+    let connection = TcpStream::connect(address).await.expect("Error while trying to establish connection");
     let mut buf = BufStream::new(connection);
 
     let start_time = Instant::now();
