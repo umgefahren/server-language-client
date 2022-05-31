@@ -1,6 +1,5 @@
 use std::{path::PathBuf, net::SocketAddr};
 
-
 use clap::{Parser, Subcommand};
 
 #[cfg(unix)]
@@ -62,6 +61,7 @@ pub(crate) enum Commands {
         /// amount of patterns to be generated
         size: usize,
         /// file for where to put the generated data
+        #[clap(default_value = "data.bin")]
         data_out: PathBuf,
         /// pattern to pass
         #[clap(parse(try_from_str), default_value = "SET-GET-GET-DEL")]
@@ -76,16 +76,40 @@ pub(crate) enum Commands {
         compression_level: i32,
     },
     Test {
+        /// specify how often the given pattern should be repeated
         #[clap(default_value_t = 1)]
         repetitions: usize,
+        /// host on which the server is listening
         #[clap(default_value = "127.0.0.1:8080")]
         host: SocketAddr,
+        /// pattern that will be executed
+        ///
+        /// A pattern is defined as pattern key words, seperated by a `-`.
+        /// Valid pattern key words are:
+        ///
+        /// * SET
+        ///
+        /// * GET
+        ///
+        /// * DEL
         #[clap(parse(try_from_str), default_value = "SET-GET-GET-DEL")]
         pattern: Pattern,
+        /// the size of the generated keys
         #[clap(default_value_t = 10)]
         key_size: usize,
+        /// the size of the generated values
         #[clap(default_value_t = 10)]
         value_size: usize,
     },
+    Benchmark {
+        #[clap(parse(try_from_str=parse_duration::parse))]
+        duration: std::time::Duration,
+        #[clap(default_value = "data.bin")]
+        inp_file: PathBuf,
+        #[clap(default_value = "result.csv")]
+        out_file: PathBuf,
+        #[clap(default_value = "127.0.0.1:8080")]
+        host: SocketAddr,
+    }
 }
 
