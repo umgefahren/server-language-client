@@ -1,32 +1,52 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{atomic::AtomicBool, Arc};
 
 use flume::Receiver;
-use tokio::{sync::{Notify, Semaphore}, net::{ToSocketAddrs, TcpStream}, io::BufStream, time::Instant};
+use tokio::{
+    io::BufStream,
+    net::{TcpStream, ToSocketAddrs},
+    sync::Semaphore,
+    time::Instant,
+};
 
-use crate::{supplier::{PatternBundle, PatternResponse, TimeResult}, state::State};
+use crate::{
+    state::State,
+    supplier::{PatternBundle, PatternResponse, TimeResult},
+};
 
+pub(crate) async fn worker<A: ToSocketAddrs>(
+    supplier: Receiver<PatternBundle>,
+    address: A,
+    kill_swith: Arc<AtomicBool>,
+    activator: Arc<Semaphore>,
+    state: &State,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    activator.acquire().await?.forget();
 
-pub(crate) async fn worker<A: ToSocketAddrs>(supplier: Receiver<PatternBundle>, address: A, kill_swith: Arc<AtomicBool>, activator: Arc<Semaphore>, state: &State) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    activator.acquire().await?;
-
-    println!("starting to work now");
+    // println!("starting to work now");
 
     loop {
         if kill_swith.load(std::sync::atomic::Ordering::Relaxed) && supplier.is_empty() {
             return Ok(());
         }
-        
+
         let bundle = supplier.recv_async().await?;
         execute_bundle(&address, bundle, state).await?;
     }
 }
 
-async fn execute_bundle<A: ToSocketAddrs>(address: &A, bundle: PatternBundle, state: &State) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn execute_bundle<A: ToSocketAddrs>(
+    address: &A,
+    bundle: PatternBundle,
+    state: &State,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pattern = bundle.pattern;
     let sender = bundle.response_chan;
 
-    let connection = TcpStream::connect(address).await.expect("Error while trying to establish connection");
+    let connection = TcpStream::connect(address)
+        .await
+        .expect("Error while trying to establish connection");
     let mut buf = BufStream::new(connection);
+    // let mut buf = BufStream::with_capacity(10, 0, connection);
 
     let start_time = Instant::now();
 
@@ -35,16 +55,14 @@ async fn execute_bundle<A: ToSocketAddrs>(address: &A, bundle: PatternBundle, st
     let timing = TimeResult {
         durations,
         total_duration,
-        start_time
+        start_time,
     };
 
-    let response = PatternResponse {
-        timing
-    };
+    let response = PatternResponse { timing };
 
-    tokio::spawn(async {
-        sender.send(response).expect("failed to send pattern response");
-    });
+    sender
+        .send(response)
+        .expect("error passing pattern response");
 
     Ok(())
 }

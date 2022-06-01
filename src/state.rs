@@ -8,7 +8,7 @@ pub(crate) struct State {
 impl State {
     pub(crate) fn new() -> Self {
         Self {
-            map: CHashMap::new()
+            map: CHashMap::new(),
         }
     }
 }

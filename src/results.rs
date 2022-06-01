@@ -1,15 +1,23 @@
-use std::{sync::{Arc, atomic::AtomicBool}, time::Duration, path::Path};
+use std::{
+    path::Path,
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
 
+use crate::{
+    pattern::{ExecPattern, PatternExecError},
+    supplier::{PatternResponse, ResponseHandlerBundler, TimeResult},
+};
 use flume::Receiver;
-use tokio::{time::Instant, fs::File, io::{BufWriter, AsyncWriteExt}};
-use serde::{Serialize, Deserialize};
-
-use crate::{pattern::{ExecPattern, PatternExecError}, supplier::{TimeResult, ResponseHandlerBundler, PatternResponse}};
-
+use tokio::{
+    fs::File,
+    io::{AsyncWriteExt, BufWriter},
+    time::Instant,
+};
 
 pub(crate) struct ResultEntry {
     pattern: Arc<ExecPattern>,
-    durations: Vec<Result<Duration, PatternExecError>>, 
+    durations: Vec<Result<Duration, PatternExecError>>,
     total_duration: Duration,
     start_time: Instant,
 }
@@ -23,9 +31,8 @@ impl ResultEntry {
             pattern,
             durations: time_res.durations,
             total_duration: time_res.total_duration,
-            start_time: time_res.start_time
+            start_time: time_res.start_time,
         }
-
     }
 
     pub(crate) fn to_csv_line(&self, global_start_time: Instant) -> String {
@@ -44,13 +51,10 @@ impl ResultEntry {
 
     #[inline]
     fn pattern_to_string_vec(&self, parts: &mut Vec<String>) {
-        self
-            .pattern
+        self.pattern
             .0
             .iter()
-            .for_each(|e| {
-                parts.push(e.to_string())
-            })
+            .for_each(|e| parts.push(e.to_string()))
     }
 
     #[inline]
@@ -61,12 +65,12 @@ impl ResultEntry {
                     let duration_string = d.as_nanos().to_string();
                     parts.push(duration_string);
                     parts.push(NO_ERROR_STR.to_string());
-                },
+                }
                 Err(e) => {
                     let error_string = e.to_string();
                     parts.push(NO_DUR_STR.to_string());
                     parts.push(error_string);
-                },
+                }
             }
         }
     }
@@ -79,20 +83,32 @@ impl ResultEntry {
 
     #[inline]
     fn start_time_to_string_vec(&self, parts: &mut Vec<String>, global_start_time: Instant) {
-        let start_time_string = self.start_time.duration_since(global_start_time).as_nanos().to_string();
+        let start_time_string = self
+            .start_time
+            .duration_since(global_start_time)
+            .as_nanos()
+            .to_string();
         parts.push(start_time_string);
     }
 }
 
-pub(crate) async fn benchmark_resp_handler(resp_hand_receiver: Receiver<ResponseHandlerBundler>, kill_switch: Arc<AtomicBool>, out_path: impl AsRef<Path>) {
-    let file = File::create(out_path).await.expect("error creating the file for output");
+pub(crate) async fn benchmark_resp_handler(
+    resp_hand_receiver: Receiver<ResponseHandlerBundler>,
+    kill_switch: Arc<AtomicBool>,
+    out_path: impl AsRef<Path>,
+) {
+    let file = File::create(out_path)
+        .await
+        .expect("error creating the file for output");
     let mut file_buf = BufWriter::new(file);
 
     let global_start_time = Instant::now();
-    
-    let (incoming_sender, incoming_receiver) = flume::unbounded::<(TimeResult, Arc<ExecPattern>)>();
+
+    let (incoming_sender, mut incoming_receiver) =
+        tokio::sync::mpsc::unbounded_channel::<(TimeResult, Arc<ExecPattern>)>();
+
     let acceptor_kill_switch = kill_switch.clone();
-    
+
     tokio::spawn(async move {
         loop {
             if acceptor_kill_switch.load(std::sync::atomic::Ordering::Relaxed) {
@@ -100,25 +116,52 @@ pub(crate) async fn benchmark_resp_handler(resp_hand_receiver: Receiver<Response
             }
 
             let local_sender = incoming_sender.clone();
-            let ResponseHandlerBundler { chan, pattern } = resp_hand_receiver.recv_async().await.expect("Error trying to accept new channel and pattern");
+            let ResponseHandlerBundler { chan, pattern } =
+                match resp_hand_receiver.recv_async().await {
+                    Ok(d) => d,
+                    Err(_) => {
+                        println!("shutting down response handler");
+                        return;
+                    }
+                };
             tokio::spawn(async move {
+                // println!("forked");
                 let PatternResponse { timing } = match chan.await {
                     Ok(d) => d,
-                    _ => return,
+                    _ => {
+                        // println!("{:?}", e);
+                        return;
+                    }
                 };
-                local_sender.send_async((timing, pattern)).await;
+                local_sender
+                    .send((timing, pattern))
+                    .expect("error sending local awnser");
+                // local_sender.send_async((timing, pattern)).await.expect("error sending local awnser");
             });
         }
     });
+
+    let mut counter = 0;
 
     loop {
         if kill_switch.load(std::sync::atomic::Ordering::Relaxed) {
             return;
         }
-        let (timing, pattern) = incoming_receiver.recv_async().await.expect("Error getting result from incoming");
+        let (timing, pattern) = incoming_receiver
+            .recv()
+            .await
+            .expect("Error getting result from incoming");
         let result_entry = ResultEntry::new(pattern, timing);
         let mut line = result_entry.to_csv_line(global_start_time);
         line.push('\n');
-        file_buf.write_all(line.as_bytes()).await.expect("error writing line to file");
+        file_buf
+            .write_all(line.as_bytes())
+            .await
+            .expect("error writing line to file");
+        counter += 1;
+        if counter % 1000 == 0 {
+            println!("Counter => {}", counter);
+        }
+        // file_buf.flush().await.expect("error while flushing");
     }
 }

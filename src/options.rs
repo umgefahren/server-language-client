@@ -1,9 +1,9 @@
-use std::{path::PathBuf, net::SocketAddr};
+use std::{net::SocketAddr, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 
 #[cfg(unix)]
-use libc::{rlimit, getrlimit, RLIMIT_NOFILE};
+use libc::{getrlimit, rlimit, RLIMIT_NOFILE};
 
 use crate::pattern::ParsePattern as Pattern;
 
@@ -16,15 +16,12 @@ fn get_cur_file_descritpors_unix() -> u64 {
     let lim_ptr: *mut rlimit = &mut lim;
     let check_result = unsafe { getrlimit(RLIMIT_NOFILE, lim_ptr) };
     match check_result {
-        0 => {
-            lim.rlim_cur.try_into().expect("limit didn't fit")
-        },
+        0 => lim.rlim_cur.try_into().expect("limit didn't fit"),
         _ => {
             panic!("error reading maximum number of file descriptors");
         }
     }
 }
-
 
 #[cfg(not(unix))]
 fn default_file_descriptor() -> u64 {
@@ -52,7 +49,6 @@ pub(crate) struct Cli {
     #[clap(short = 'l', long, default_value_t = get_file_descriptor_limit())]
     pub(crate) fd_limit: u64,
 }
-
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum Commands {
@@ -110,6 +106,5 @@ pub(crate) enum Commands {
         out_file: PathBuf,
         #[clap(default_value = "127.0.0.1:8080")]
         host: SocketAddr,
-    }
+    },
 }
-
