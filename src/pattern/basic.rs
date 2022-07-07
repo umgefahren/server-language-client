@@ -1,6 +1,4 @@
 use std::time::Duration;
-
-use chashmap::ReadGuard;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufStream},
@@ -13,7 +11,7 @@ use crate::{generator::generate_valid_string, state::State};
 use super::{ParsePattern, ParsePatternCommand, PatternExecError};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct BasicPattern(pub(crate) Vec<BasicCommand>);
+pub struct BasicPattern(pub(crate) Vec<BasicCommand>);
 
 impl BasicPattern {
     pub(crate) fn new(p: &ParsePattern, key_len: usize, value_len: usize) -> Self {
@@ -93,16 +91,6 @@ impl ToString for BasicCommand {
 }
 
 #[inline(always)]
-fn found_not_found(inp: Option<ReadGuard<String, String>>) -> String {
-    inp.map(|e| {
-        let mut ret = e.to_string();
-        ret.push('\n');
-        ret
-    })
-    .unwrap_or("not found\n".to_string())
-}
-
-#[inline(always)]
 async fn execute_get(
     conn: &mut BufStream<TcpStream>,
     key: &str,
@@ -115,7 +103,18 @@ async fn execute_get(
     conn.write_all(command_string.as_bytes()).await?;
     conn.flush().await?;
 
-    let expected_response = found_not_found(state.map.get(key));
+
+    // let expected_response = found_not_found(state.map.lock().await.get(key));
+    let expected_response = state.map
+        .read()
+        .await
+        .get(key)
+        .map(|e| {
+            let mut ret = e.to_string();
+            ret.push('\n');
+            ret
+        })
+        .unwrap_or("not found\n".to_string());
 
     let mut actual_response_buf = String::with_capacity(expected_response.len());
     conn.read_line(&mut actual_response_buf).await?;
@@ -143,6 +142,8 @@ async fn execute_set(
 
     let expected_response = state
         .map
+        .write()
+        .await
         .insert(key, value)
         .map(|e| {
             let mut ret = e.to_string();
@@ -176,6 +177,8 @@ async fn execute_del(
 
     let expected_response = state
         .map
+        .write()
+        .await
         .remove(key)
         .map(|e| {
             let mut ret = e.to_string();

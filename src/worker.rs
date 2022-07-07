@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use std::collections::BinaryHeap;
 
 // use flume::{Receiver, TryRecvError};
@@ -9,6 +9,7 @@ use tokio::{
     sync::Semaphore,
     time::Instant,
 };
+use tokio::io::AsyncWriteExt;
 
 use crate::{
     state::State,
@@ -18,28 +19,28 @@ use crate::{
 pub(crate) async fn worker<A: ToSocketAddrs>(
     mut supplier: Receiver<PatternBundle>,
     address: A,
-    kill_switch: tokio::sync::watch::Receiver<()>,
+    mut kill_switch: tokio::sync::watch::Receiver<()>,
     activator: Arc<Semaphore>,
     state: &State,
 ) -> Result<BinaryHeap<PatternResponse>, Box<dyn std::error::Error + Send + Sync>> {
-    // activator.acquire().await?.forget();
+    activator.acquire().await?.forget();
 
     let mut result_heap = BinaryHeap::new();
 
     loop {
-        /*
+
         match kill_switch.has_changed() {
             Ok(true) => {
                 println!("Got killed exiting");
                 return Ok(result_heap)
             },
             Ok(_) => {},
-            Err(e) => Err(e)?,
+            Err(e) => {
+                println!("Quitting from error in kill switch => {:?}", e);
+                return Ok(result_heap);
+            },
         }
 
-         */
-
-        /*
         let mut bundle_opt: Option<PatternBundle> = supplier.try_recv().ok();
 
         if bundle_opt.is_none() {
@@ -52,13 +53,15 @@ pub(crate) async fn worker<A: ToSocketAddrs>(
                     return Ok(result_heap);
                 }
             }
-        }*/
+        }
 
-        let bundle = supplier.recv().await.unwrap();
+        let bundle = bundle_opt.unwrap();
         let response = execute_bundle(&address, bundle, state).await.unwrap();
         result_heap.push(response);
 
-        println!("Heap Size in Worker => {}", result_heap.len());
+        if result_heap.len() % 100 == 0 {
+            println!("Heap Size in Worker => {}", result_heap.len());
+        }
 
         // tokio::task::yield_now().await;
     }
@@ -74,25 +77,42 @@ async fn execute_bundle<A: ToSocketAddrs>(
     let connection = TcpStream::connect(address)
         .await
         .expect("Error while trying to establish connection");
+
+
     let mut buf = BufStream::new(connection);
     // let mut buf = BufStream::with_capacity(10, 0, connection);
 
+
+
     let start_time = Instant::now();
 
-    println!("Starting to execute");
+    // println!("Starting to execute");
 
-    let (durations, total_duration) = match tokio::time::timeout(Duration::from_millis(100), pattern.execute(&mut buf, state)).await {
+
+    /*
+    let (durations, total_duration) = match tokio::time::timeout(Duration::from_millis(1000), pattern.execute(&mut buf, state)).await {
         Ok(Ok(d)) => d,
         e => {
-            panic!("{:?}", e);
 
+
+            panic!("{:?}", e);
         },
     };
 
-    println!("Stopped execution");
+
+     */
 
 
-    // let (durations, total_duration) = pattern.execute(&mut buf, state).await?;
+    let (durations, total_duration) = pattern.execute(&mut buf, state).await?;
+
+    let mut tcp = buf.into_inner();
+    tcp.flush().await?;
+    drop(tcp);
+
+    // println!("Stopped execution");
+
+
+
 
 
     let timing = TimeResult {

@@ -3,10 +3,11 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
     sync::Arc,
+    io::Write,
 };
 use std::collections::BinaryHeap;
 
-const WORKER_CHANNEL_SIZE: usize = 5;
+const WORKER_CHANNEL_SIZE: usize = 100;
 
 use tokio::{sync::Semaphore, task::JoinHandle};
 
@@ -16,12 +17,13 @@ use crate::{
     supplier::{feed_chans, feed_from_file, PatternBundle},
     worker::worker,
 };
+use crate::results::ResultEntry;
 use crate::supplier::PatternResponse;
 
 pub(crate) async fn perform_benchmark(
     duration: Duration,
     inp_file: PathBuf,
-    _out_file: PathBuf,
+    out_file: PathBuf,
     host: SocketAddr,
     fd_limit: u64,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -29,6 +31,7 @@ pub(crate) async fn perform_benchmark(
 
     println!("creating {} workers", workers_num);
 
+    let start_time = std::time::Instant::now();
 
     let (kill_switch_sender, mut kill_switch_receiver) = tokio::sync::watch::channel(());
     kill_switch_receiver.borrow_and_update();
@@ -109,14 +112,34 @@ pub(crate) async fn perform_benchmark(
 
     println!("finished benchmark");
 
+    let mut out_file = std::fs::File::create(out_file)?;
+
+    let responses = all_results.into_sorted_vec();
+    responses
+        .into_iter()
+        .map(|e| {
+            ResultEntry {
+                pattern: e.pattern,
+                durations: e.timing.durations,
+                total_duration: e.timing.total_duration,
+                start_time: e.timing.start_time
+            }
+        })
+        .map(|e| {
+            e.to_csv_line(start_time.into())
+        })
+        .for_each(|mut e| {
+            e.push('\n');
+            out_file.write_all(e.as_bytes()).unwrap();
+        });
+
     std::process::exit(0);
 }
 
 fn fd_limit_to_worker_num(fd_limit: u64) -> usize {
     let concurrency_available = std::thread::available_parallelism().unwrap().get();
     let tmp = fd_limit as usize;
-    // concurrency_available.min(tmp)
-    10
+    concurrency_available.min(tmp)
 }
 
 fn make_worker_chans(workers: usize) -> (Vec<tokio::sync::mpsc::Sender<PatternBundle>>, Vec<tokio::sync::mpsc::Receiver<PatternBundle>>) {
@@ -155,8 +178,7 @@ fn make_workers(
                 inner_state.as_ref(),
             )
             .await;
-            println!("this worker just died. FUUUUUUUUCK");
-            println!("{:?}", res);
+
             res
         });
 

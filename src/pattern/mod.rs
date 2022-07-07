@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use self::basic::BasicPattern;
 
-pub(crate) type ExecPattern = BasicPattern;
+pub type ExecPattern = BasicPattern;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ParsePatternCommand {
@@ -46,7 +46,7 @@ impl FromStr for ParsePattern {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum PatternExecError {
+pub enum PatternExecError {
     #[error("io error occured while trying to execute pattern")]
     IoError(#[from] std::io::Error),
     #[error("invalid response (expected {expected:?}, found {found:?})")]

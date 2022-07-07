@@ -3,34 +3,21 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    pattern::{ExecPattern, PatternExecError},
-    supplier::TimeResult,
-};
+use crate::pattern::{ExecPattern, PatternExecError};
 use tokio::time::Instant;
 
-#[allow(unused)]
-pub(crate) struct ResultEntry {
-    pattern: Arc<ExecPattern>,
-    durations: Vec<Result<Duration, PatternExecError>>,
-    total_duration: Duration,
-    start_time: Instant,
+
+pub struct ResultEntry {
+    pub pattern: Arc<ExecPattern>,
+    pub durations: Vec<Result<Duration, PatternExecError>>,
+    pub total_duration: Duration,
+    pub start_time: Instant,
 }
 
 const NO_ERROR_STR: &str = "-";
 const NO_DUR_STR: &str = "-";
 
-#[allow(unused)]
 impl ResultEntry {
-    pub(crate) fn new(pattern: Arc<ExecPattern>, time_res: TimeResult) -> Self {
-        Self {
-            pattern,
-            durations: time_res.durations,
-            total_duration: time_res.total_duration,
-            start_time: time_res.start_time,
-        }
-    }
-
     pub(crate) fn to_csv_line(&self, global_start_time: Instant) -> String {
         self.to_string_vec(global_start_time).join(", ")
     }
@@ -88,84 +75,3 @@ impl ResultEntry {
     }
 }
 
-/*
-pub(crate) async fn benchmark_resp_handler(
-    resp_hand_receiver: Receiver<ResponseHandlerBundler>,
-    kill_switch: Arc<AtomicBool>,
-    out_path: impl AsRef<Path>,
-) {
-    let file = std::fs::File::create(out_path)
-        .expect("error creating the file for output");
-    let mut file_buf = std::io::BufWriter::new(file);
-
-    let global_start_time = Instant::now();
-
-    let (incoming_sender, mut incoming_receiver) =
-        tokio::sync::mpsc::channel::<(TimeResult, Arc<ExecPattern>)>(100);
-
-    let acceptor_kill_switch = kill_switch.clone();
-
-    tokio::spawn(async move {
-        let mut incoming_counter = 0;
-
-        loop {
-            if acceptor_kill_switch.load(std::sync::atomic::Ordering::Relaxed) {
-                return;
-            }
-
-            let local_sender = incoming_sender.clone();
-            let ResponseHandlerBundler { mut chan, pattern } =
-                match resp_hand_receiver.recv_async().await {
-                    Ok(d) => d,
-                    Err(_) => {
-                        println!("shutting down response handler");
-                        return;
-                    }
-                };
-            tokio::spawn(async move {
-                // println!("forked");
-                let PatternResponse { timing } = match chan.recv().await {
-                    Some(d) => d,
-                    _ => {
-                        // println!("{:?}", e);
-                        return;
-                    }
-                };
-                local_sender
-                    .send((timing, pattern))
-                    .await
-                    .expect("error sending local awnser");
-                // local_sender.send_async((timing, pattern)).await.expect("error sending local awnser");
-            });
-            incoming_counter += 1;
-            if incoming_counter % 100_000 == 0 {
-                println!("Incoming Counter => {}", incoming_counter);
-            }
-        }
-    });
-
-    let mut counter = 0;
-
-    loop {
-        if kill_switch.load(std::sync::atomic::Ordering::Relaxed) {
-            return;
-        }
-
-        let (timing, pattern) = incoming_receiver
-            .recv()
-            .await
-            .expect("Error getting result from incoming");
-        let result_entry = ResultEntry::new(pattern, timing);
-        let mut line = result_entry.to_csv_line(global_start_time);
-        line.push('\n');
-        file_buf.write_all(line.as_bytes()).expect("error writing line to file");
-        counter += 1;
-        if counter % 1000 == 0 {
-            println!("Counter => {}", counter);
-        }
-        file_buf.flush().expect("error while flushing");
-        // file_buf.flush().await.expect("error while flushing");
-    }
-}
-
- */
