@@ -1,20 +1,15 @@
 use std::{
-    path::Path,
-    sync::{atomic::AtomicBool, Arc},
+    sync::Arc,
     time::Duration,
 };
 
 use crate::{
     pattern::{ExecPattern, PatternExecError},
-    supplier::{PatternResponse, ResponseHandlerBundler, TimeResult},
+    supplier::TimeResult,
 };
-use flume::Receiver;
-use tokio::{
-    fs::File,
-    io::{AsyncWriteExt, BufWriter},
-    time::Instant,
-};
+use tokio::time::Instant;
 
+#[allow(unused)]
 pub(crate) struct ResultEntry {
     pattern: Arc<ExecPattern>,
     durations: Vec<Result<Duration, PatternExecError>>,
@@ -25,6 +20,7 @@ pub(crate) struct ResultEntry {
 const NO_ERROR_STR: &str = "-";
 const NO_DUR_STR: &str = "-";
 
+#[allow(unused)]
 impl ResultEntry {
     pub(crate) fn new(pattern: Arc<ExecPattern>, time_res: TimeResult) -> Self {
         Self {
@@ -92,31 +88,33 @@ impl ResultEntry {
     }
 }
 
+/*
 pub(crate) async fn benchmark_resp_handler(
     resp_hand_receiver: Receiver<ResponseHandlerBundler>,
     kill_switch: Arc<AtomicBool>,
     out_path: impl AsRef<Path>,
 ) {
-    let file = File::create(out_path)
-        .await
+    let file = std::fs::File::create(out_path)
         .expect("error creating the file for output");
-    let mut file_buf = BufWriter::new(file);
+    let mut file_buf = std::io::BufWriter::new(file);
 
     let global_start_time = Instant::now();
 
     let (incoming_sender, mut incoming_receiver) =
-        tokio::sync::mpsc::unbounded_channel::<(TimeResult, Arc<ExecPattern>)>();
+        tokio::sync::mpsc::channel::<(TimeResult, Arc<ExecPattern>)>(100);
 
     let acceptor_kill_switch = kill_switch.clone();
 
     tokio::spawn(async move {
+        let mut incoming_counter = 0;
+
         loop {
             if acceptor_kill_switch.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
 
             let local_sender = incoming_sender.clone();
-            let ResponseHandlerBundler { chan, pattern } =
+            let ResponseHandlerBundler { mut chan, pattern } =
                 match resp_hand_receiver.recv_async().await {
                     Ok(d) => d,
                     Err(_) => {
@@ -126,8 +124,8 @@ pub(crate) async fn benchmark_resp_handler(
                 };
             tokio::spawn(async move {
                 // println!("forked");
-                let PatternResponse { timing } = match chan.await {
-                    Ok(d) => d,
+                let PatternResponse { timing } = match chan.recv().await {
+                    Some(d) => d,
                     _ => {
                         // println!("{:?}", e);
                         return;
@@ -135,9 +133,14 @@ pub(crate) async fn benchmark_resp_handler(
                 };
                 local_sender
                     .send((timing, pattern))
+                    .await
                     .expect("error sending local awnser");
                 // local_sender.send_async((timing, pattern)).await.expect("error sending local awnser");
             });
+            incoming_counter += 1;
+            if incoming_counter % 100_000 == 0 {
+                println!("Incoming Counter => {}", incoming_counter);
+            }
         }
     });
 
@@ -147,6 +150,7 @@ pub(crate) async fn benchmark_resp_handler(
         if kill_switch.load(std::sync::atomic::Ordering::Relaxed) {
             return;
         }
+
         let (timing, pattern) = incoming_receiver
             .recv()
             .await
@@ -154,14 +158,14 @@ pub(crate) async fn benchmark_resp_handler(
         let result_entry = ResultEntry::new(pattern, timing);
         let mut line = result_entry.to_csv_line(global_start_time);
         line.push('\n');
-        file_buf
-            .write_all(line.as_bytes())
-            .await
-            .expect("error writing line to file");
+        file_buf.write_all(line.as_bytes()).expect("error writing line to file");
         counter += 1;
         if counter % 1000 == 0 {
             println!("Counter => {}", counter);
         }
+        file_buf.flush().expect("error while flushing");
         // file_buf.flush().await.expect("error while flushing");
     }
 }
+
+ */

@@ -1,6 +1,8 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::{sync::Arc, time::Duration};
+use std::collections::BinaryHeap;
 
-use flume::Receiver;
+// use flume::{Receiver, TryRecvError};
+use tokio::sync::mpsc::Receiver;
 use tokio::{
     io::BufStream,
     net::{TcpStream, ToSocketAddrs},
@@ -14,23 +16,51 @@ use crate::{
 };
 
 pub(crate) async fn worker<A: ToSocketAddrs>(
-    supplier: Receiver<PatternBundle>,
+    mut supplier: Receiver<PatternBundle>,
     address: A,
-    kill_swith: Arc<AtomicBool>,
+    kill_switch: tokio::sync::watch::Receiver<()>,
     activator: Arc<Semaphore>,
     state: &State,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    activator.acquire().await?.forget();
+) -> Result<BinaryHeap<PatternResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    // activator.acquire().await?.forget();
 
-    // println!("starting to work now");
+    let mut result_heap = BinaryHeap::new();
 
     loop {
-        if kill_swith.load(std::sync::atomic::Ordering::Relaxed) && supplier.is_empty() {
-            return Ok(());
+        /*
+        match kill_switch.has_changed() {
+            Ok(true) => {
+                println!("Got killed exiting");
+                return Ok(result_heap)
+            },
+            Ok(_) => {},
+            Err(e) => Err(e)?,
         }
 
-        let bundle = supplier.recv_async().await?;
-        execute_bundle(&address, bundle, state).await?;
+         */
+
+        /*
+        let mut bundle_opt: Option<PatternBundle> = supplier.try_recv().ok();
+
+        if bundle_opt.is_none() {
+            tokio::select! {
+                bundle_result = supplier.recv() => {
+                    bundle_opt = Some(bundle_result.unwrap());
+                }
+                changed_result = kill_switch.changed() => {
+                    let _ = changed_result.unwrap();
+                    return Ok(result_heap);
+                }
+            }
+        }*/
+
+        let bundle = supplier.recv().await.unwrap();
+        let response = execute_bundle(&address, bundle, state).await.unwrap();
+        result_heap.push(response);
+
+        println!("Heap Size in Worker => {}", result_heap.len());
+
+        // tokio::task::yield_now().await;
     }
 }
 
@@ -38,9 +68,8 @@ async fn execute_bundle<A: ToSocketAddrs>(
     address: &A,
     bundle: PatternBundle,
     state: &State,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<PatternResponse, Box<dyn std::error::Error + Send + Sync>> {
     let pattern = bundle.pattern;
-    let sender = bundle.response_chan;
 
     let connection = TcpStream::connect(address)
         .await
@@ -50,7 +79,21 @@ async fn execute_bundle<A: ToSocketAddrs>(
 
     let start_time = Instant::now();
 
-    let (durations, total_duration) = pattern.execute(&mut buf, state).await?;
+    println!("Starting to execute");
+
+    let (durations, total_duration) = match tokio::time::timeout(Duration::from_millis(100), pattern.execute(&mut buf, state)).await {
+        Ok(Ok(d)) => d,
+        e => {
+            panic!("{:?}", e);
+
+        },
+    };
+
+    println!("Stopped execution");
+
+
+    // let (durations, total_duration) = pattern.execute(&mut buf, state).await?;
+
 
     let timing = TimeResult {
         durations,
@@ -58,11 +101,17 @@ async fn execute_bundle<A: ToSocketAddrs>(
         start_time,
     };
 
-    let response = PatternResponse { timing };
+    let response = PatternResponse { timing, pattern };
 
-    sender
-        .send(response)
-        .expect("error passing pattern response");
+    /*
 
-    Ok(())
+    tokio::spawn(async move {
+        sender
+            .send(response)
+            .await
+            .expect("error passing pattern response");
+    });
+    */
+
+    Ok(response)
 }

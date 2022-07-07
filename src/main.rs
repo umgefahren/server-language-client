@@ -20,9 +20,9 @@ pub(crate) mod supplier;
 pub(crate) mod test;
 pub(crate) mod worker;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    // console_subscriber::init();
+    console_subscriber::init();
     let cli = Cli::parse();
     match cli.command {
         Commands::Generate {

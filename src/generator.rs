@@ -31,7 +31,7 @@ fn generate_valid_ascii_char() -> char {
     let mut rng = thread_rng();
     let chosing_range = 0..ASCII_CHARS.len();
     let chosen_idx = rng.gen_range(chosing_range);
-    unsafe { *ASCII_CHARS.get_unchecked(chosen_idx) }
+    *ASCII_CHARS.get(chosen_idx).unwrap()
 }
 
 pub(crate) fn generate_valid_string(len: usize) -> String {

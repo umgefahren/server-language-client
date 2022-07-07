@@ -114,7 +114,6 @@ async fn execute_get(
 
     conn.write_all(command_string.as_bytes()).await?;
     conn.flush().await?;
-    conn.flush().await?;
 
     let expected_response = found_not_found(state.map.get(key));
 

@@ -21,11 +21,13 @@ pub(crate) async fn perform_test(
     key_size: usize,
     value_size: usize,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let (_kill_switch_sender, kill_switch_receiver) = tokio::sync::watch::channel(());
+
     let exec_pattern = ExecPattern::new(&pattern, key_size, value_size);
     let kill_switch = Arc::new(AtomicBool::new(false));
-    let (decoder_sender, decoder_receiver) = flume::unbounded();
-    let (worker_sender, worker_receiver) = flume::unbounded();
-    let (resp_hand_sender, resp_hand_receiver) = flume::unbounded();
+    let (decoder_sender, decoder_receiver) = tokio::sync::mpsc::channel(1000);
+    let (worker_sender, worker_receiver) = tokio::sync::mpsc::channel(1_00000000);
+    let (_resp_hand_sender, resp_hand_receiver) = flume::unbounded();
 
     let resp_handler_kill_switch = kill_switch.clone();
     let resp_handler_handle = tokio::spawn(async move {
@@ -33,7 +35,7 @@ pub(crate) async fn perform_test(
     });
 
     let worker_chans = vec![worker_sender];
-    let worker_kill_switch = kill_switch.clone();
+    // let worker_kill_switch = kill_switch.clone();
     let activator = Arc::new(Semaphore::new(0));
     let worker_activator = activator.clone();
 
@@ -41,6 +43,7 @@ pub(crate) async fn perform_test(
     let worker_state = state.clone();
 
     let worker_host = Arc::new(host.clone());
+    let worker_kill_switch = kill_switch_receiver.clone();
 
     let worker_handle = tokio::spawn(async move {
         let inner_host = worker_host;
@@ -57,23 +60,21 @@ pub(crate) async fn perform_test(
 
     activator.add_permits(1);
 
-    let feeder_kill_switch = kill_switch.clone();
+    let feeder_kill_switch = kill_switch_receiver.clone();
 
     let feeder_handle = tokio::spawn(async move {
         feed_chans::<true>(
             decoder_receiver,
             worker_chans,
-            resp_hand_sender,
-            feeder_kill_switch,
+            feeder_kill_switch
         )
-        .await
     });
 
     let decoder_handle = tokio::spawn(async move {
         feed_test(repetitions, exec_pattern, kill_switch, decoder_sender).await
     });
 
-    feeder_handle.await??;
+    feeder_handle.await?.await?;
     decoder_handle.await??;
     worker_handle.await??;
     resp_handler_handle.await?;
@@ -90,11 +91,11 @@ async fn test_resp_handler(
             return;
         }
 
-        let ResponseHandlerBundler { chan, pattern } = resp_hand_receiver
+        let ResponseHandlerBundler { mut chan, pattern } = resp_hand_receiver
             .recv_async()
             .await
             .expect("error receiving");
-        let PatternResponse { timing } = chan.await.expect("error receiving one shot");
+        let PatternResponse { timing, .. } = chan.recv().await.expect("error receiving one shot");
         let TimeResult {
             durations,
             total_duration,
