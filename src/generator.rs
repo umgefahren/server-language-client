@@ -1,26 +1,27 @@
-use std::{ops::Range, path::PathBuf};
 use std::io::{Result as IoResult, Write};
+use std::{ops::Range, path::PathBuf};
 
-use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::{thread_rng, Rng};
-use zstd::Encoder;
 use std::fs::File;
 use std::io::BufWriter;
+use zstd::Encoder;
 
-use crate::pattern::ParsePattern;
 use crate::pattern::basic::BasicPattern;
+use crate::pattern::ParsePattern;
 
 const LOWER_CASE_CHARS: Range<char> = 'a'..'z';
 const UPPER_CASE_CHARS: Range<char> = 'A'..'Z';
 
 lazy_static::lazy_static! {
-    static ref ASCII_CHARS: Vec<char> = { 
+    static ref ASCII_CHARS: Vec<char> = {
         let mut ret: Vec<char> = LOWER_CASE_CHARS.chain(UPPER_CASE_CHARS).collect();
         ret.sort_unstable();
         ret
     };
 }
 
+#[allow(unused)]
 fn is_char_valid(inp: &char) -> bool {
     LOWER_CASE_CHARS.contains(inp) || UPPER_CASE_CHARS.contains(inp)
 }
@@ -30,7 +31,7 @@ fn generate_valid_ascii_char() -> char {
     let mut rng = thread_rng();
     let chosing_range = 0..ASCII_CHARS.len();
     let chosen_idx = rng.gen_range(chosing_range);
-    unsafe { *ASCII_CHARS.get_unchecked(chosen_idx) }
+    *ASCII_CHARS.get(chosen_idx).unwrap()
 }
 
 pub(crate) fn generate_valid_string(len: usize) -> String {
@@ -51,8 +52,14 @@ fn test_generate_valid_ascii_char() {
     }
 }
 
-pub(crate) async fn generate(size: usize, data_out: PathBuf, pattern: ParsePattern, key_size: usize, value_size: usize, compression_level: i32) -> IoResult<()> {
-
+pub(crate) async fn generate(
+    size: usize,
+    data_out: PathBuf,
+    pattern: ParsePattern,
+    key_size: usize,
+    value_size: usize,
+    compression_level: i32,
+) -> IoResult<()> {
     let multi = MultiProgress::new();
 
     let bytes_style = ProgressStyle::default_spinner()
@@ -65,8 +72,7 @@ pub(crate) async fn generate(size: usize, data_out: PathBuf, pattern: ParsePatte
     let patterns_bar = multi.add(ProgressBar::new(size as u64));
     patterns_bar.set_style(patterns_style);
 
-    let multi_progress = tokio::spawn(async move {  multi.join() });
-
+    let multi_progress = tokio::spawn(async move { multi.join() });
 
     let file = File::create(data_out)?;
     let file_bar = bytes_bar.wrap_write(file);
@@ -79,10 +85,16 @@ pub(crate) async fn generate(size: usize, data_out: PathBuf, pattern: ParsePatte
 
     for _ in 0..size {
         let gen_pattern = BasicPattern::new(&pattern, key_size, value_size);
-        let encoded_pattern_len = bincode::serialized_size(&gen_pattern).unwrap();
+
+        let encoded = bincode::serialize(&gen_pattern).unwrap();
+        let encoded_pattern_len = encoded.len();
+        // let encoded_pattern_len = bincode::serialized_size(&gen_pattern).unwrap();
         let m = encoded_pattern_len.to_le_bytes();
         buf_comp.write_all(&m)?;
-        bincode::serialize_into(&mut buf_comp, &gen_pattern).unwrap();
+        buf_comp.flush()?;
+        buf_comp.write_all(&encoded)?;
+        buf_comp.flush()?;
+        // bincode::serialize_into(&mut buf_comp, &gen_pattern).unwrap();
         patterns_bar.inc(1);
     }
 
