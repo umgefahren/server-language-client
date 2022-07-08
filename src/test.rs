@@ -1,15 +1,15 @@
+use std::collections::BinaryHeap;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicBool, Arc},
 };
-use std::collections::BinaryHeap;
 
 use comfy_table::Table;
 use tokio::sync::Semaphore;
 
+use crate::pattern::basic::BasicState;
 use crate::{
     pattern::{ExecPattern, ParsePattern},
-    state::State,
     supplier::{feed_chans, feed_test, PatternResponse, TimeResult},
     worker::worker,
 };
@@ -23,7 +23,9 @@ pub(crate) async fn perform_test(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (_kill_switch_sender, kill_switch_receiver) = tokio::sync::watch::channel(());
 
-    let exec_pattern = ExecPattern::new(&pattern, key_size, value_size);
+    let mut state = BasicState::new();
+
+    let exec_pattern = ExecPattern::new(&pattern, key_size, value_size, &mut state);
     let kill_switch = Arc::new(AtomicBool::new(false));
     let (decoder_sender, decoder_receiver) = tokio::sync::mpsc::channel(1000);
     let (worker_sender, worker_receiver) = tokio::sync::mpsc::channel(1_00000000);
@@ -33,21 +35,16 @@ pub(crate) async fn perform_test(
     let activator = Arc::new(Semaphore::new(0));
     let worker_activator = activator.clone();
 
-    let state = Arc::new(State::new());
-    let worker_state = state.clone();
-
     let worker_host = Arc::new(host);
     let worker_kill_switch = kill_switch_receiver.clone();
 
     let worker_handle = tokio::spawn(async move {
         let inner_host = worker_host;
-        let inner_worker_state = worker_state;
         worker(
             worker_receiver,
             *inner_host,
             worker_kill_switch,
             worker_activator,
-            &inner_worker_state,
         )
         .await
     });

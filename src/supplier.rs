@@ -50,7 +50,6 @@ pub(crate) struct PatternBundle {
     pub(crate) pattern: Arc<ExecPattern>,
 }
 
-
 pub(crate) async fn feed_chans<const TEST_MODE: bool>(
     mut pattern: tokio::sync::mpsc::Receiver<ExecPattern>,
     worker_chans: Vec<tokio::sync::mpsc::Sender<PatternBundle>>,
@@ -67,7 +66,7 @@ pub(crate) async fn feed_chans<const TEST_MODE: bool>(
             Ok(()) => {
                 let pat_opt = tokio::task::unconstrained(pattern.recv()).await;
                 let pat = if TEST_MODE && pat_opt.is_none() {
-                    return Ok(())
+                    return Ok(());
                 } else {
                     pat_opt.unwrap()
                 };

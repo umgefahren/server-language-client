@@ -8,17 +8,13 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Receiver;
 use tokio::{io::BufStream, net::TcpStream, sync::Semaphore, time::Instant};
 
-use crate::{
-    state::State,
-    supplier::{PatternBundle, PatternResponse, TimeResult},
-};
+use crate::supplier::{PatternBundle, PatternResponse, TimeResult};
 
 pub(crate) async fn worker(
     mut supplier: Receiver<PatternBundle>,
     address: std::net::SocketAddr,
     mut kill_switch: tokio::sync::watch::Receiver<()>,
     activator: Arc<Semaphore>,
-    state: &State,
 ) -> Result<BinaryHeap<PatternResponse>, Box<dyn std::error::Error + Send + Sync>> {
     activator.acquire().await?.forget();
 
@@ -31,8 +27,8 @@ pub(crate) async fn worker(
                 return Ok(result_heap);
             }
             Ok(_) => {}
-            Err(e) => {
-                println!("Quitting from error in kill switch => {:?}", e);
+            Err(_) => {
+                // println!("Quitting from error in kill switch => {:?}", e);
                 return Ok(result_heap);
             }
         }
@@ -56,7 +52,7 @@ pub(crate) async fn worker(
         }
 
         let bundle = bundle_opt.unwrap();
-        let response = execute_bundle(&address, bundle, state).await.unwrap();
+        let response = execute_bundle(&address, bundle).await.unwrap();
         result_heap.push(response);
 
         /* if result_heap.len() % 100 == 0 {
@@ -70,7 +66,6 @@ pub(crate) async fn worker(
 async fn execute_bundle(
     address: &std::net::SocketAddr,
     bundle: PatternBundle,
-    state: &State,
 ) -> Result<PatternResponse, Box<dyn std::error::Error + Send + Sync>> {
     let pattern = bundle.pattern;
 
@@ -98,7 +93,7 @@ async fn execute_bundle(
 
      */
 
-    let (durations, total_duration) = pattern.execute(&mut buf, state).await?;
+    let (durations, total_duration) = pattern.execute(&mut buf).await?;
 
     let mut tcp = buf.into_inner();
     tcp.flush().await?;
@@ -106,7 +101,6 @@ async fn execute_bundle(
     tcp.shutdown().await?;
 
     drop(tcp);
-
 
     let timing = TimeResult {
         durations,

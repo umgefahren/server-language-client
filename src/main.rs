@@ -15,7 +15,6 @@ pub(crate) mod generator;
 pub(crate) mod options;
 pub(crate) mod pattern;
 pub(crate) mod results;
-pub(crate) mod state;
 pub(crate) mod supplier;
 pub(crate) mod test;
 pub(crate) mod worker;

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::Duration;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufStream},
@@ -6,17 +7,22 @@ use tokio::{
     time::Instant,
 };
 
-use crate::{generator::generate_valid_string, state::State};
+use crate::generator::generate_valid_string;
 
 use super::{ParsePattern, ParsePatternCommand, PatternExecError};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BasicPattern(pub(crate) Vec<BasicCommand>);
+pub struct BasicPattern(pub(crate) Vec<BasicCommand>, pub(crate) Vec<String>);
 
 impl BasicPattern {
-    pub(crate) fn new(p: &ParsePattern, key_len: usize, value_len: usize) -> Self {
+    pub(crate) fn new(
+        p: &ParsePattern,
+        key_len: usize,
+        value_len: usize,
+        state: &mut BasicState,
+    ) -> Self {
         let mut current_set: Option<BasicCommand> = None;
-        let content =
+        let content: Vec<BasicCommand> =
             p.0.iter()
                 .map(|e| match e {
                     ParsePatternCommand::SET => {
@@ -34,18 +40,20 @@ impl BasicPattern {
                     },
                 })
                 .collect();
-        Self(content)
+
+        let predictions = content.iter().map(|e| e.predict(state)).collect();
+
+        Self(content, predictions)
     }
 
     pub(crate) async fn execute(
         &self,
         conn: &mut BufStream<TcpStream>,
-        state: &State,
     ) -> std::io::Result<(Vec<Result<Duration, PatternExecError>>, Duration)> {
         let mut ret = Vec::with_capacity(self.0.len());
         let start = tokio::time::Instant::now();
-        for b in self.0.iter() {
-            let res = b.execute(conn, state).await;
+        for (idx, b) in self.0.iter().enumerate() {
+            let res = b.execute(conn, self.1.get(idx).unwrap().to_string()).await;
             if let Err(PatternExecError::IoError(io)) = res {
                 return Err(io);
             }
@@ -68,14 +76,22 @@ impl BasicCommand {
     async fn execute(
         &self,
         conn: &mut BufStream<TcpStream>,
-        state: &State,
+        expected_response: String,
     ) -> Result<Duration, PatternExecError> {
         match self {
-            BasicCommand::Get { ref key } => execute_get(conn, key, state).await,
+            BasicCommand::Get { ref key } => execute_get(conn, key, expected_response).await,
             BasicCommand::Set { ref key, ref value } => {
-                execute_set(conn, key.to_string(), value.to_string(), state).await
+                execute_set(conn, key.to_string(), value.to_string(), expected_response).await
             }
-            BasicCommand::Del { ref key } => execute_del(conn, key, state).await,
+            BasicCommand::Del { ref key } => execute_del(conn, key, expected_response).await,
+        }
+    }
+
+    fn predict(&self, state: &mut BasicState) -> String {
+        match self {
+            BasicCommand::Get { ref key } => predict_get(state, key),
+            BasicCommand::Set { ref key, ref value } => predict_set(state, key, value),
+            BasicCommand::Del { ref key } => predict_del(state, key),
         }
     }
 }
@@ -94,7 +110,7 @@ impl ToString for BasicCommand {
 async fn execute_get(
     conn: &mut BufStream<TcpStream>,
     key: &str,
-    state: &State,
+    expected_response: String,
 ) -> Result<Duration, PatternExecError> {
     let command_string: String = format!("GET {}\n", key);
 
@@ -102,19 +118,6 @@ async fn execute_get(
 
     conn.write_all(command_string.as_bytes()).await?;
     conn.flush().await?;
-
-    // let expected_response = found_not_found(state.map.lock().await.get(key));
-    let expected_response = state
-        .map
-        .read()
-        .await
-        .get(key)
-        .map(|e| {
-            let mut ret = e.to_string();
-            ret.push('\n');
-            ret
-        })
-        .unwrap_or("not found\n".to_string());
 
     let mut actual_response_buf = String::with_capacity(expected_response.len());
     conn.read_line(&mut actual_response_buf).await?;
@@ -131,7 +134,7 @@ async fn execute_set(
     conn: &mut BufStream<TcpStream>,
     key: String,
     value: String,
-    state: &State,
+    expected_response: String,
 ) -> Result<Duration, PatternExecError> {
     let command_string: String = format!("SET {} {}\n", key, value);
 
@@ -139,18 +142,6 @@ async fn execute_set(
 
     conn.write_all(command_string.as_bytes()).await?;
     conn.flush().await?;
-
-    let expected_response = state
-        .map
-        .write()
-        .await
-        .insert(key, value)
-        .map(|e| {
-            let mut ret = e;
-            ret.push('\n');
-            ret
-        })
-        .unwrap_or("not found\n".to_string());
 
     let mut actual_response_buf = String::with_capacity(expected_response.len());
     conn.read_line(&mut actual_response_buf).await?;
@@ -166,7 +157,7 @@ async fn execute_set(
 async fn execute_del(
     conn: &mut BufStream<TcpStream>,
     key: &str,
-    state: &State,
+    expected_response: String,
 ) -> Result<Duration, PatternExecError> {
     let command_string: String = format!("DEL {}\n", key);
 
@@ -174,18 +165,6 @@ async fn execute_del(
 
     conn.write_all(command_string.as_bytes()).await?;
     conn.flush().await?;
-
-    let expected_response = state
-        .map
-        .write()
-        .await
-        .remove(key)
-        .map(|e| {
-            let mut ret = e;
-            ret.push('\n');
-            ret
-        })
-        .unwrap_or("not found\n".to_string());
 
     let mut actual_response_buf = String::with_capacity(expected_response.len());
     conn.read_line(&mut actual_response_buf).await?;
@@ -231,3 +210,36 @@ pub(crate) fn derive_del(set_command: &BasicCommand) -> BasicCommand {
         _ => panic!("tried to derive a del command from a non set command"),
     }
 }
+
+fn predict_get(state: &BasicState, key: &str) -> String {
+    state
+        .get(key)
+        .map(String::to_string)
+        .map(|mut e| {
+            e.push('\n');
+            e
+        })
+        .unwrap_or("not found\n".into())
+}
+
+fn predict_set(state: &mut BasicState, key: &str, val: &str) -> String {
+    state
+        .insert(key.to_string(), val.to_string())
+        .map(|mut e| {
+            e.push('\n');
+            e
+        })
+        .unwrap_or("not found\n".into())
+}
+
+fn predict_del(state: &mut BasicState, key: &str) -> String {
+    state
+        .remove(key)
+        .map(|mut e| {
+            e.push('\n');
+            e
+        })
+        .unwrap_or("not found\n".into())
+}
+
+pub(crate) type BasicState = HashMap<String, String>;

@@ -10,12 +10,12 @@ pub struct ResultEntry {
     pub start_time: Instant,
 }
 
-const NO_ERROR_STR: &str = "-";
-const NO_DUR_STR: &str = "-";
+const NO_ERROR_STR: &str = "";
+const NO_DUR_STR: &str = "";
 
 impl ResultEntry {
     pub(crate) fn to_csv_line(&self, global_start_time: Instant) -> String {
-        self.to_string_vec(global_start_time).join(", ")
+        self.to_string_vec(global_start_time).join(",")
     }
 
     #[inline]
