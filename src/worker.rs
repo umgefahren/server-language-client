@@ -3,16 +3,10 @@ use std::collections::BinaryHeap;
 use std::sync::Arc;
 use std::time::Duration;
 
-
 // use flume::{Receiver, TryRecvError};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Receiver;
-use tokio::{
-    io::BufStream,
-    net::TcpStream,
-    sync::Semaphore,
-    time::Instant,
-};
+use tokio::{io::BufStream, net::TcpStream, sync::Semaphore, time::Instant};
 
 use crate::{
     state::State,
@@ -69,7 +63,6 @@ pub(crate) async fn worker(
     }
 }
 
-
 async fn execute_bundle(
     address: &std::net::SocketAddr,
     bundle: PatternBundle,
@@ -105,7 +98,7 @@ async fn execute_bundle(
 
     let mut tcp = buf.into_inner();
     tcp.flush().await?;
-    let _ = tcp.set_linger(Some(Duration::from_millis(1))).unwrap();
+    tcp.set_linger(Some(Duration::from_millis(1))).unwrap();
     tcp.shutdown().await?;
 
     drop(tcp);
