@@ -20,6 +20,7 @@ thiserror = "1"
 comfy-table = "5.0.1"
 parse_duration = "2.1.1"
 async-compression = { version = "0.3.14", features = ["tokio", "zstd"] }
+# socket2 = { version = "0.4.4", features = ["all"] }
 # console-subscriber = "0"
 
 

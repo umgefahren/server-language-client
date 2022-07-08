@@ -1,11 +1,7 @@
-use std::{
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use crate::pattern::{ExecPattern, PatternExecError};
 use tokio::time::Instant;
-
 
 pub struct ResultEntry {
     pub pattern: Arc<ExecPattern>,
@@ -74,4 +70,3 @@ impl ResultEntry {
         parts.push(start_time_string);
     }
 }
-

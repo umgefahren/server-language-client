@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-
 use tokio::time::Instant;
 
 use crate::pattern::{ExecPattern, PatternExecError};
@@ -51,8 +50,6 @@ pub(crate) struct PatternBundle {
     pub(crate) pattern: Arc<ExecPattern>,
 }
 
-
-
 #[derive(Debug)]
 pub(crate) struct ResponseHandlerBundler {
     pub(crate) chan: tokio::sync::mpsc::Receiver<PatternResponse>,
@@ -68,18 +65,14 @@ pub(crate) async fn feed_chans<const TEST_MODE: bool>(
     let pat = tokio::task::unconstrained(pattern.recv()).await.unwrap();
     // let pat = pattern.recv().await.unwrap();
     let mut bundle = PatternBundle {
-        pattern: Arc::new(pat)
+        pattern: Arc::new(pat),
     };
     for (idx, i) in worker_chans.iter().enumerate().cycle() {
-
-
-
-
         match i.try_send(bundle) {
             Ok(()) => {
                 let pat = tokio::task::unconstrained(pattern.recv()).await.unwrap();
                 bundle = PatternBundle {
-                    pattern: Arc::new(pat)
+                    pattern: Arc::new(pat),
                 };
 
                 // println!("Send counter => {}", send_counter);
@@ -94,8 +87,6 @@ pub(crate) async fn feed_chans<const TEST_MODE: bool>(
                 return Ok(());
             }
         }
-
-
 
         if kill_switch.has_changed().unwrap() {
             return Ok(());
@@ -115,7 +106,9 @@ pub(crate) async fn feed_chans<const TEST_MODE: bool>(
 }
 
 async fn decode_from_file(
-    file: &mut  async_compression::tokio::bufread::ZstdDecoder<tokio::io::BufReader<tokio::fs::File>>,
+    file: &mut async_compression::tokio::bufread::ZstdDecoder<
+        tokio::io::BufReader<tokio::fs::File>,
+    >,
     buf: &mut Vec<u8>,
 ) -> std::io::Result<ExecPattern> {
     // println!("{} {}", file.get_mut().get_mut().stream_position().await?, file_length);
@@ -150,9 +143,15 @@ pub(crate) async fn feed_from_file<T: AsRef<Path>>(
 
      */
 
-    let file = tokio::fs::File::open(path).await.expect("error opening file");
+    let file = tokio::fs::File::open(path)
+        .await
+        .expect("error opening file");
 
-    let file_length = file.metadata().await.expect("error getting metadata from file").len();
+    let file_length = file
+        .metadata()
+        .await
+        .expect("error getting metadata from file")
+        .len();
     let file_buf = tokio::io::BufReader::new(file);
 
     let mut decoder = async_compression::tokio::bufread::ZstdDecoder::new(file_buf);
@@ -164,7 +163,6 @@ pub(crate) async fn feed_from_file<T: AsRef<Path>>(
     loop {
         match decode_from_file(&mut decoder, &mut buf).await {
             Ok(d) => {
-
                 sender.send(d).await?;
                 // sender.send_async(d).await?;
                 // sender.send(d).unwrap();
@@ -173,15 +171,15 @@ pub(crate) async fn feed_from_file<T: AsRef<Path>>(
                 // println!("File send sender capacity => {}", sender.capacity());
             }
             Err(e) => {
-                println!("Error {:?}", e);
+                // println!("Error {:?}", e);
                 match e.kind() {
                     ErrorKind::UnexpectedEof => {
-                        println!("refreshing file buffer");
+                        // println!("refreshing file buffer");
                         let file_buf = decoder.into_inner();
                         let mut file = file_buf.into_inner();
                         file.seek(SeekFrom::Start(0)).await?;
                         let file_buf = tokio::io::BufReader::new(file);
-                        decoder =  async_compression::tokio::bufread::ZstdDecoder::new(file_buf);
+                        decoder = async_compression::tokio::bufread::ZstdDecoder::new(file_buf);
                     }
                     _ => {
                         println!("Error in file feeder => {:?}", e);
@@ -191,18 +189,17 @@ pub(crate) async fn feed_from_file<T: AsRef<Path>>(
             }
         }
         if bytes_position >= file_length - 1000 {
-
             println!("refreshing file buffer 2");
             let file_buf = decoder.into_inner();
 
             let mut file = file_buf.into_inner();
             file.seek(SeekFrom::Start(0)).await?;
-            decoder =  async_compression::tokio::bufread::ZstdDecoder::new(tokio::io::BufReader::new(file));
+            decoder = async_compression::tokio::bufread::ZstdDecoder::new(
+                tokio::io::BufReader::new(file),
+            );
             bytes_position = 0;
         }
-
     }
-
 }
 
 pub(crate) async fn feed_test(

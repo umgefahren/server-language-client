@@ -42,7 +42,7 @@ pub(crate) async fn perform_test(
     let state = Arc::new(State::new());
     let worker_state = state.clone();
 
-    let worker_host = Arc::new(host.clone());
+    let worker_host = Arc::new(host);
     let worker_kill_switch = kill_switch_receiver.clone();
 
     let worker_handle = tokio::spawn(async move {
@@ -50,7 +50,7 @@ pub(crate) async fn perform_test(
         let inner_worker_state = worker_state;
         worker(
             worker_receiver,
-            &*inner_host,
+            *inner_host,
             worker_kill_switch,
             worker_activator,
             &inner_worker_state,
@@ -63,11 +63,7 @@ pub(crate) async fn perform_test(
     let feeder_kill_switch = kill_switch_receiver.clone();
 
     let feeder_handle = tokio::spawn(async move {
-        feed_chans::<true>(
-            decoder_receiver,
-            worker_chans,
-            feeder_kill_switch
-        )
+        feed_chans::<true>(decoder_receiver, worker_chans, feeder_kill_switch)
     });
 
     let decoder_handle = tokio::spawn(async move {

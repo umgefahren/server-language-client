@@ -3,7 +3,7 @@ use std::{net::SocketAddr, path::PathBuf};
 use clap::{Parser, Subcommand};
 
 #[cfg(unix)]
-use libc::{getrlimit, setrlimit, rlimit, RLIMIT_NOFILE};
+use libc::{getrlimit, rlimit, setrlimit, RLIMIT_NOFILE};
 
 use crate::pattern::ParsePattern as Pattern;
 
@@ -22,7 +22,7 @@ fn get_cur_file_descritpors_unix() -> u64 {
             let lim_ptr: *mut rlimit = &mut lim;
             unsafe { setrlimit(RLIMIT_NOFILE, lim_ptr) };
             hard_limit.try_into().expect("couldn't convert")
-        },
+        }
         _ => {
             panic!("error reading maximum number of file descriptors");
         }
@@ -69,10 +69,10 @@ pub(crate) enum Commands {
         #[clap(parse(try_from_str), default_value = "SET-GET-GET-DEL")]
         pattern: Pattern,
         /// key size in number of characters
-        #[clap(default_value_t = 100)]
+        #[clap(default_value_t = 10)]
         key_size: usize,
         /// value size in number of characters
-        #[clap(default_value_t = 100)]
+        #[clap(default_value_t = 10)]
         value_size: usize,
         #[clap(min_values(0), max_values(21), default_value_t = 0)]
         compression_level: i32,

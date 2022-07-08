@@ -1,5 +1,5 @@
-use std::time::Duration;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufStream},
     net::TcpStream,
@@ -103,9 +103,9 @@ async fn execute_get(
     conn.write_all(command_string.as_bytes()).await?;
     conn.flush().await?;
 
-
     // let expected_response = found_not_found(state.map.lock().await.get(key));
-    let expected_response = state.map
+    let expected_response = state
+        .map
         .read()
         .await
         .get(key)
@@ -146,7 +146,7 @@ async fn execute_set(
         .await
         .insert(key, value)
         .map(|e| {
-            let mut ret = e.to_string();
+            let mut ret = e;
             ret.push('\n');
             ret
         })
@@ -181,7 +181,7 @@ async fn execute_del(
         .await
         .remove(key)
         .map(|e| {
-            let mut ret = e.to_string();
+            let mut ret = e;
             ret.push('\n');
             ret
         })
