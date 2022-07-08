@@ -2,15 +2,15 @@ use std::{
     net::SocketAddr,
     sync::{atomic::AtomicBool, Arc},
 };
+use std::collections::BinaryHeap;
 
 use comfy_table::Table;
-use flume::Receiver;
 use tokio::sync::Semaphore;
 
 use crate::{
     pattern::{ExecPattern, ParsePattern},
     state::State,
-    supplier::{feed_chans, feed_test, PatternResponse, ResponseHandlerBundler, TimeResult},
+    supplier::{feed_chans, feed_test, PatternResponse, TimeResult},
     worker::worker,
 };
 
@@ -27,12 +27,6 @@ pub(crate) async fn perform_test(
     let kill_switch = Arc::new(AtomicBool::new(false));
     let (decoder_sender, decoder_receiver) = tokio::sync::mpsc::channel(1000);
     let (worker_sender, worker_receiver) = tokio::sync::mpsc::channel(1_00000000);
-    let (_resp_hand_sender, resp_hand_receiver) = flume::unbounded();
-
-    let resp_handler_kill_switch = kill_switch.clone();
-    let resp_handler_handle = tokio::spawn(async move {
-        test_resp_handler(resp_hand_receiver, resp_handler_kill_switch).await
-    });
 
     let worker_chans = vec![worker_sender];
     // let worker_kill_switch = kill_switch.clone();
@@ -63,40 +57,30 @@ pub(crate) async fn perform_test(
     let feeder_kill_switch = kill_switch_receiver.clone();
 
     let feeder_handle = tokio::spawn(async move {
-        feed_chans::<true>(decoder_receiver, worker_chans, feeder_kill_switch)
+        feed_chans::<true>(decoder_receiver, worker_chans, feeder_kill_switch).await
     });
 
     let decoder_handle = tokio::spawn(async move {
         feed_test(repetitions, exec_pattern, kill_switch, decoder_sender).await
     });
 
-    feeder_handle.await?.await?;
+    feeder_handle.await??;
     decoder_handle.await??;
-    worker_handle.await??;
-    resp_handler_handle.await?;
+    let m = worker_handle.await??;
+    test_resp_printer(m);
 
     Ok(())
 }
 
-async fn test_resp_handler(
-    resp_hand_receiver: Receiver<ResponseHandlerBundler>,
-    kill_switch: Arc<AtomicBool>,
-) {
-    loop {
-        if kill_switch.load(std::sync::atomic::Ordering::Relaxed) && resp_hand_receiver.is_empty() {
-            return;
-        }
-
-        let ResponseHandlerBundler { mut chan, pattern } = resp_hand_receiver
-            .recv_async()
-            .await
-            .expect("error receiving");
-        let PatternResponse { timing, .. } = chan.recv().await.expect("error receiving one shot");
+fn test_resp_printer(mut results: BinaryHeap<PatternResponse>) {
+    while !results.is_empty() {
+        let response = results.pop().unwrap();
+        let pattern = response.pattern;
         let TimeResult {
             durations,
             total_duration,
             start_time,
-        } = timing;
+        } = response.timing;
 
         let mut table = Table::new();
 
@@ -113,7 +97,6 @@ async fn test_resp_handler(
         row.push(format!("{:?}", total_duration));
         row.push(format!("{:?}", start_time));
         table.set_header(header).add_row(row);
-
         println!("{table}");
     }
 }

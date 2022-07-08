@@ -42,6 +42,10 @@ pub(crate) async fn worker(
         if bundle_opt.is_none() {
             tokio::select! {
                 bundle_result = supplier.recv() => {
+                    if bundle_result.is_none() {
+                        println!("Empty supplier, exiting worker");
+                        return Ok(result_heap);
+                    }
                     bundle_opt = Some(bundle_result.unwrap());
                 }
                 changed_result = kill_switch.changed() => {
@@ -103,7 +107,6 @@ async fn execute_bundle(
 
     drop(tcp);
 
-    // println!("Stopped execution");
 
     let timing = TimeResult {
         durations,

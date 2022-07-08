@@ -50,11 +50,6 @@ pub(crate) struct PatternBundle {
     pub(crate) pattern: Arc<ExecPattern>,
 }
 
-#[derive(Debug)]
-pub(crate) struct ResponseHandlerBundler {
-    pub(crate) chan: tokio::sync::mpsc::Receiver<PatternResponse>,
-    pub(crate) pattern: Arc<ExecPattern>,
-}
 
 pub(crate) async fn feed_chans<const TEST_MODE: bool>(
     mut pattern: tokio::sync::mpsc::Receiver<ExecPattern>,
@@ -70,13 +65,15 @@ pub(crate) async fn feed_chans<const TEST_MODE: bool>(
     for (idx, i) in worker_chans.iter().enumerate().cycle() {
         match i.try_send(bundle) {
             Ok(()) => {
-                let pat = tokio::task::unconstrained(pattern.recv()).await.unwrap();
+                let pat_opt = tokio::task::unconstrained(pattern.recv()).await;
+                let pat = if TEST_MODE && pat_opt.is_none() {
+                    return Ok(())
+                } else {
+                    pat_opt.unwrap()
+                };
                 bundle = PatternBundle {
                     pattern: Arc::new(pat),
                 };
-
-                // println!("Send counter => {}", send_counter);
-                // println!("Channel length => {}", i.capacity());
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(d)) => {
                 bundle = d;
@@ -91,16 +88,6 @@ pub(crate) async fn feed_chans<const TEST_MODE: bool>(
         if kill_switch.has_changed().unwrap() {
             return Ok(());
         }
-
-        /*
-        if TEST_MODE && kill_switch.load(std::sync::atomic::Ordering::Relaxed) && pattern.is_empty()
-        {
-            return Ok(());
-        } else if (!TEST_MODE) && kill_switch.load(std::sync::atomic::Ordering::Relaxed) {
-            return Ok(());
-        }
-
-         */
     }
     unreachable!()
 }
