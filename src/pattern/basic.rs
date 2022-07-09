@@ -219,7 +219,7 @@ fn predict_get(state: &BasicState, key: &str) -> String {
             e.push('\n');
             e
         })
-        .unwrap_or("not found\n".into())
+        .unwrap_or_else(|| "not found\n".into())
 }
 
 fn predict_set(state: &mut BasicState, key: &str, val: &str) -> String {
@@ -229,7 +229,7 @@ fn predict_set(state: &mut BasicState, key: &str, val: &str) -> String {
             e.push('\n');
             e
         })
-        .unwrap_or("not found\n".into())
+        .unwrap_or_else(|| "not found\n".into())
 }
 
 fn predict_del(state: &mut BasicState, key: &str) -> String {
@@ -239,7 +239,7 @@ fn predict_del(state: &mut BasicState, key: &str) -> String {
             e.push('\n');
             e
         })
-        .unwrap_or("not found\n".into())
+        .unwrap_or_else(|| "not found\n".into())
 }
 
 pub(crate) type BasicState = HashMap<String, String>;

@@ -31,7 +31,6 @@ pub(crate) async fn perform_test(
     let (worker_sender, worker_receiver) = tokio::sync::mpsc::channel(1_00000000);
 
     let worker_chans = vec![worker_sender];
-    // let worker_kill_switch = kill_switch.clone();
     let activator = Arc::new(Semaphore::new(0));
     let worker_activator = activator.clone();
 

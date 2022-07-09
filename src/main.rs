@@ -1,4 +1,3 @@
-// #![allow(unused)]
 #![allow(clippy::upper_case_acronyms)]
 
 use std::error::Error;
@@ -19,9 +18,8 @@ pub(crate) mod supplier;
 pub(crate) mod test;
 pub(crate) mod worker;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+#[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    // console_subscriber::init();
     let cli = Cli::parse();
     match cli.command {
         Commands::Generate {

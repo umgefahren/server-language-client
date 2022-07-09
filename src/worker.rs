@@ -28,7 +28,6 @@ pub(crate) async fn worker(
             }
             Ok(_) => {}
             Err(_) => {
-                // println!("Quitting from error in kill switch => {:?}", e);
                 return Ok(result_heap);
             }
         }
@@ -54,12 +53,6 @@ pub(crate) async fn worker(
         let bundle = bundle_opt.unwrap();
         let response = execute_bundle(&address, bundle).await.unwrap();
         result_heap.push(response);
-
-        /* if result_heap.len() % 100 == 0 {
-            println!("Heap Size in Worker => {}", result_heap.len());
-        } */
-
-        // tokio::task::yield_now().await;
     }
 }
 
@@ -70,28 +63,10 @@ async fn execute_bundle(
     let pattern = bundle.pattern;
 
     let connection = TcpStream::connect(address).await?;
-    // let local_address = connection.local_addr().unwrap();
-    // println!("Port => {}", local_address.port());
 
     let mut buf = BufStream::new(connection);
-    // let mut buf = BufStream::with_capacity(10, 0, connection);
 
     let start_time = Instant::now();
-
-    // println!("Starting to execute");
-
-    /*
-    let (durations, total_duration) = match tokio::time::timeout(Duration::from_millis(1000), pattern.execute(&mut buf, state)).await {
-        Ok(Ok(d)) => d,
-        e => {
-
-
-            panic!("{:?}", e);
-        },
-    };
-
-
-     */
 
     let (durations, total_duration) = pattern.execute(&mut buf).await?;
 
@@ -109,16 +84,6 @@ async fn execute_bundle(
     };
 
     let response = PatternResponse { timing, pattern };
-
-    /*
-
-    tokio::spawn(async move {
-        sender
-            .send(response)
-            .await
-            .expect("error passing pattern response");
-    });
-    */
 
     Ok(response)
 }
