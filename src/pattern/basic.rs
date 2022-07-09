@@ -195,7 +195,7 @@ pub(crate) fn generate_set(key_len: usize, value_len: usize) -> BasicCommand {
     BasicCommand::Set { key, value }
 }
 
-#[inline]
+#[inline(always)]
 pub(crate) fn derive_get(set_command: &BasicCommand) -> BasicCommand {
     match set_command {
         BasicCommand::Set { key, .. } => BasicCommand::Get { key: key.clone() },
@@ -203,7 +203,7 @@ pub(crate) fn derive_get(set_command: &BasicCommand) -> BasicCommand {
     }
 }
 
-#[inline]
+#[inline(always)]
 pub(crate) fn derive_del(set_command: &BasicCommand) -> BasicCommand {
     match set_command {
         BasicCommand::Set { key, .. } => BasicCommand::Del { key: key.clone() },
@@ -211,6 +211,7 @@ pub(crate) fn derive_del(set_command: &BasicCommand) -> BasicCommand {
     }
 }
 
+#[inline(always)]
 fn predict_get(state: &BasicState, key: &str) -> String {
     state
         .get(key)
@@ -222,6 +223,7 @@ fn predict_get(state: &BasicState, key: &str) -> String {
         .unwrap_or_else(|| "not found\n".into())
 }
 
+#[inline(always)]
 fn predict_set(state: &mut BasicState, key: &str, val: &str) -> String {
     state
         .insert(key.to_string(), val.to_string())
@@ -232,6 +234,7 @@ fn predict_set(state: &mut BasicState, key: &str, val: &str) -> String {
         .unwrap_or_else(|| "not found\n".into())
 }
 
+#[inline(always)]
 fn predict_del(state: &mut BasicState, key: &str) -> String {
     state
         .remove(key)
