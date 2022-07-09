@@ -1,17 +1,18 @@
 use std::io::{Result as IoResult, Write};
-use std::{ops::Range, path::PathBuf};
+use std::path::PathBuf;
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::{thread_rng, Rng};
 use std::fs::File;
 use std::io::BufWriter;
+use std::ops::RangeInclusive;
 use zstd::Encoder;
 
 use crate::pattern::basic::{BasicPattern, BasicState};
 use crate::pattern::ParsePattern;
 
-const LOWER_CASE_CHARS: Range<char> = 'a'..'z';
-const UPPER_CASE_CHARS: Range<char> = 'A'..'Z';
+const LOWER_CASE_CHARS: RangeInclusive<char> = 'a'..='z';
+const UPPER_CASE_CHARS: RangeInclusive<char> = 'A'..='Z';
 
 lazy_static::lazy_static! {
     static ref ASCII_CHARS: Vec<char> = {
@@ -22,8 +23,11 @@ lazy_static::lazy_static! {
 }
 
 #[allow(unused)]
-fn is_char_valid(inp: &char) -> bool {
-    LOWER_CASE_CHARS.contains(inp) || UPPER_CASE_CHARS.contains(inp)
+fn is_char_valid(inp: char) -> bool {
+    match inp {
+        'a'..='z' | 'A'..='Z' => true,
+        _ => false,
+    }
 }
 
 #[inline(always)]
@@ -48,7 +52,7 @@ fn test_generate_valid_ascii_char() {
     let sample_size = ASCII_CHARS.len() * 1_000;
     for _ in 0..sample_size {
         let chosen = generate_valid_ascii_char();
-        assert!(is_char_valid(&chosen));
+        assert!(is_char_valid(chosen));
     }
 }
 
@@ -80,7 +84,6 @@ pub(crate) async fn generate(
     let compressor = Encoder::new(buffered, compression_level)?;
     let mut buf_comp = BufWriter::new(compressor);
 
-    // let mut buf_comp = BufWriter::new(buffered);
     bytes_bar.println("created file");
 
     let mut state = BasicState::new();
