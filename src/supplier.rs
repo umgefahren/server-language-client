@@ -50,7 +50,6 @@ pub(crate) struct PatternBundle {
     pub(crate) pattern: Arc<ExecPattern>,
 }
 
-
 pub(crate) async fn feed_chans<const TEST_MODE: bool>(
     mut pattern: tokio::sync::mpsc::Receiver<ExecPattern>,
     worker_chans: Vec<tokio::sync::mpsc::Sender<PatternBundle>>,
@@ -67,7 +66,7 @@ pub(crate) async fn feed_chans<const TEST_MODE: bool>(
             Ok(()) => {
                 let pat_opt = tokio::task::unconstrained(pattern.recv()).await;
                 let pat = if TEST_MODE && pat_opt.is_none() {
-                    return Ok(())
+                    return Ok(());
                 } else {
                     pat_opt.unwrap()
                 };
@@ -142,26 +141,17 @@ pub(crate) async fn feed_from_file<T: AsRef<Path>>(
     let file_buf = tokio::io::BufReader::new(file);
 
     let mut decoder = async_compression::tokio::bufread::ZstdDecoder::new(file_buf);
-    // let mut decoder = ZstdDecoder::new(file_buf);
     let mut buf = vec![0u8; 100];
 
     let mut bytes_position = 0;
-    // let mut send_counter = 0u64;
     loop {
         match decode_from_file(&mut decoder, &mut buf).await {
             Ok(d) => {
                 sender.send(d).await?;
-                // sender.send_async(d).await?;
-                // sender.send(d).unwrap();
-                // send_counter += 1;
-                // println!("File send counter => {}", send_counter);
-                // println!("File send sender capacity => {}", sender.capacity());
             }
             Err(e) => {
-                // println!("Error {:?}", e);
                 match e.kind() {
                     ErrorKind::UnexpectedEof => {
-                        // println!("refreshing file buffer");
                         let file_buf = decoder.into_inner();
                         let mut file = file_buf.into_inner();
                         file.seek(SeekFrom::Start(0)).await?;

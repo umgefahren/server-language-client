@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use zstd::Encoder;
 
-use crate::pattern::basic::BasicPattern;
+use crate::pattern::basic::{BasicPattern, BasicState};
 use crate::pattern::ParsePattern;
 
 const LOWER_CASE_CHARS: Range<char> = 'a'..'z';
@@ -83,18 +83,18 @@ pub(crate) async fn generate(
     // let mut buf_comp = BufWriter::new(buffered);
     bytes_bar.println("created file");
 
+    let mut state = BasicState::new();
+
     for _ in 0..size {
-        let gen_pattern = BasicPattern::new(&pattern, key_size, value_size);
+        let gen_pattern = BasicPattern::new(&pattern, key_size, value_size, &mut state);
 
         let encoded = bincode::serialize(&gen_pattern).unwrap();
         let encoded_pattern_len = encoded.len();
-        // let encoded_pattern_len = bincode::serialized_size(&gen_pattern).unwrap();
         let m = encoded_pattern_len.to_le_bytes();
         buf_comp.write_all(&m)?;
         buf_comp.flush()?;
         buf_comp.write_all(&encoded)?;
         buf_comp.flush()?;
-        // bincode::serialize_into(&mut buf_comp, &gen_pattern).unwrap();
         patterns_bar.inc(1);
     }
 

@@ -8,6 +8,7 @@ use libc::{getrlimit, rlimit, setrlimit, RLIMIT_NOFILE};
 use crate::pattern::ParsePattern as Pattern;
 
 #[cfg(unix)]
+#[allow(clippy::useless_conversion)]
 fn get_cur_file_descritpors_unix() -> u64 {
     let mut lim = rlimit {
         rlim_cur: 0,

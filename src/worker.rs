@@ -8,17 +8,13 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Receiver;
 use tokio::{io::BufStream, net::TcpStream, sync::Semaphore, time::Instant};
 
-use crate::{
-    state::State,
-    supplier::{PatternBundle, PatternResponse, TimeResult},
-};
+use crate::supplier::{PatternBundle, PatternResponse, TimeResult};
 
 pub(crate) async fn worker(
     mut supplier: Receiver<PatternBundle>,
     address: std::net::SocketAddr,
     mut kill_switch: tokio::sync::watch::Receiver<()>,
     activator: Arc<Semaphore>,
-    state: &State,
 ) -> Result<BinaryHeap<PatternResponse>, Box<dyn std::error::Error + Send + Sync>> {
     activator.acquire().await?.forget();
 
@@ -31,8 +27,7 @@ pub(crate) async fn worker(
                 return Ok(result_heap);
             }
             Ok(_) => {}
-            Err(e) => {
-                println!("Quitting from error in kill switch => {:?}", e);
+            Err(_) => {
                 return Ok(result_heap);
             }
         }
@@ -56,49 +51,24 @@ pub(crate) async fn worker(
         }
 
         let bundle = bundle_opt.unwrap();
-        let response = execute_bundle(&address, bundle, state).await.unwrap();
+        let response = execute_bundle(&address, bundle).await.unwrap();
         result_heap.push(response);
-
-        /* if result_heap.len() % 100 == 0 {
-            println!("Heap Size in Worker => {}", result_heap.len());
-        } */
-
-        // tokio::task::yield_now().await;
     }
 }
 
 async fn execute_bundle(
     address: &std::net::SocketAddr,
     bundle: PatternBundle,
-    state: &State,
 ) -> Result<PatternResponse, Box<dyn std::error::Error + Send + Sync>> {
     let pattern = bundle.pattern;
 
     let connection = TcpStream::connect(address).await?;
-    // let local_address = connection.local_addr().unwrap();
-    // println!("Port => {}", local_address.port());
 
     let mut buf = BufStream::new(connection);
-    // let mut buf = BufStream::with_capacity(10, 0, connection);
 
     let start_time = Instant::now();
 
-    // println!("Starting to execute");
-
-    /*
-    let (durations, total_duration) = match tokio::time::timeout(Duration::from_millis(1000), pattern.execute(&mut buf, state)).await {
-        Ok(Ok(d)) => d,
-        e => {
-
-
-            panic!("{:?}", e);
-        },
-    };
-
-
-     */
-
-    let (durations, total_duration) = pattern.execute(&mut buf, state).await?;
+    let (durations, total_duration) = pattern.execute(&mut buf).await?;
 
     let mut tcp = buf.into_inner();
     tcp.flush().await?;
@@ -107,7 +77,6 @@ async fn execute_bundle(
 
     drop(tcp);
 
-
     let timing = TimeResult {
         durations,
         total_duration,
@@ -115,16 +84,6 @@ async fn execute_bundle(
     };
 
     let response = PatternResponse { timing, pattern };
-
-    /*
-
-    tokio::spawn(async move {
-        sender
-            .send(response)
-            .await
-            .expect("error passing pattern response");
-    });
-    */
 
     Ok(response)
 }

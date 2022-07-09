@@ -14,8 +14,6 @@ use tokio::{sync::Semaphore, task::JoinHandle};
 use crate::results::ResultEntry;
 use crate::supplier::PatternResponse;
 use crate::{
-    // results::benchmark_resp_handler,
-    state::State,
     supplier::{feed_chans, feed_from_file, PatternBundle},
     worker::worker,
 };
@@ -76,22 +74,17 @@ pub(crate) async fn perform_benchmark(
     let killer_handle = tokio::spawn(async move {
         println!("the killer is awake {:?}", duration);
         let now = Instant::now();
-        let bar = indicatif::ProgressBar::new(duration.as_secs());
+        let bar = indicatif::ProgressBar::new(duration.as_secs() - 1);
         while now.elapsed() < duration {
-            // println!("T -{}", (duration - now.elapsed()).as_secs());
-            bar.inc(1);
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            bar.set_position(now.elapsed().as_secs());
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
-        // bar.finish_and_clear();
+        bar.finish_and_clear();
         println!("Killing!!");
-
-        // kill_switch.store(true, std::sync::atomic::Ordering::Relaxed);
         kill_switch_sender.send(()).unwrap();
     });
 
     activator.add_permits(workers_num * 10);
-
-    // feeder_handle.await??;
 
     let mut all_results = BinaryHeap::new();
     for worker in workers {
@@ -158,29 +151,18 @@ fn make_workers(
 ) -> Vec<JoinHandle<Result<BinaryHeap<PatternResponse>, Box<dyn std::error::Error + Send + Sync>>>>
 {
     let mut ret = Vec::with_capacity(worker_receivers.len());
-    let state = Arc::new(State::new());
 
     for r in worker_receivers {
         let local_host = host.clone();
         let local_activator = activator.clone();
         let local_kill_switch = kill_switch.clone();
-        let local_state = state.clone();
         let worker_handle = tokio::spawn(async move {
-            let inner_state = local_state.clone();
             let inner_host = local_host.clone();
-            let res = worker(
-                r,
-                *inner_host,
-                local_kill_switch,
-                local_activator,
-                inner_state.as_ref(),
-            )
-            .await;
+            let res = worker(r, *inner_host, local_kill_switch, local_activator).await;
 
             res
         });
 
-        // println!("created worker handle");
         ret.push(worker_handle);
     }
 
